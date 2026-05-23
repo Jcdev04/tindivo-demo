@@ -38,3 +38,19 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+# tindivo-demo
+
+Tindivo · Priamo — PWA de delivery para San Jacinto, Áncash. Demo interactiva con flujo completo: carta, carrito, checkout, pago (Yape/efectivo), tracking, onboarding y gestión de direcciones.
+
+## Stack
+
+- Next.js 16 + React 19
+- Bricolage Grotesque, Geist, JetBrains Mono
+- iOS Liquid Glass UI
+
+## Correr
+
+```bash
+npm install
+npm run dev
+```
