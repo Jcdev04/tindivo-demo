@@ -6,7 +6,7 @@ import { CheckoutScreen, PaymentScreen, PickupPaymentScreen, OrderConfirmedScree
 import AuthOnboarding from '@/components/screens/AuthOnboarding';
 import { AccountScreen, AddressEditScreen } from '@/components/screens/AccountScreen';
 import ProductModal from '@/components/ProductModal';
-import { SEED_ADDRESSES } from '@/data';
+import { SEED_ADDRESSES, PRIAMO, isRestaurantOpen } from '@/data';
 
 const SCREENS = [
   { id: 'landing',  title: 'Inicio',         sub: 'Selección de restaurante' },
@@ -84,10 +84,29 @@ const GOOGLE_PARTIAL_USER = {
 const isOnboardingComplete = (u) =>
   u.signedIn && u.phone && u.addresses.length > 0;
 
+function loadCart() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('tindivo-cart');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function saveCart(cart) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem('tindivo-cart', JSON.stringify(cart));
+  } catch { /* ignore */ }
+}
+
 export default function App() {
   const [screen, setScreen] = useState('landing');
   const [user, setUser] = useState(SIGNED_IN_USER);
-  const [cart, setCart] = useState(SEED_CART);
+  const [cart, setCart] = useState(() => loadCart() || SEED_CART);
   const [modal, setModal] = useState(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState(null);
@@ -95,11 +114,11 @@ export default function App() {
     method: 'delivery',
     addressId: 'addr-1',
     phone: '987123456',
-    note: '',
   });
   const [confirmedTotal, setConfirmedTotal] = useState(84);
   const [trackingState, setTrackingState] = useState('sent');
   const [cancelReason, setCancelReason] = useState('timeout');
+  const [checkoutFrozen, setCheckoutFrozen] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState({
     id: '48391',
     phone: '987123456',
@@ -113,6 +132,59 @@ export default function App() {
     }
   }, [user.signedIn]);
 
+  useEffect(() => {
+    saveCart(cart);
+  }, [cart]);
+
+  // Browser back button navigation map
+  const BACK_MAP = {
+    menu: 'landing',
+    cart: 'menu',
+    checkout: 'cart',
+    payment: 'checkout',
+    prepay: 'payment',
+    account: 'landing',
+    addressEdit: 'account',
+  };
+  const NO_BACK = new Set(['landing', 'confirmed', 'tracking', 'cancelled']);
+
+  const navigateTo = (nextScreen) => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState({ screen: nextScreen }, '', '');
+    }
+    setScreen(nextScreen);
+  };
+
+  // Push history state on every forward screen change
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!NO_BACK.has(screen)) {
+      window.history.pushState({ screen }, '');
+    }
+  }, [screen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let ignore = false;
+    const handlePopState = (e) => {
+      if (ignore) return;
+      const prev = BACK_MAP[screen];
+      if (prev && !NO_BACK.has(screen)) {
+        ignore = true;
+        if (screen === 'addressEdit') {
+          setEditingAddress(null);
+        }
+        if (screen === 'checkout') {
+          setCheckoutFrozen(false);
+        }
+        setScreen(prev);
+        setTimeout(() => { ignore = false; }, 100);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [screen]);
+
   const handleAddToCart = (item) => {
     setCart([...cart, item]);
     setModal(null);
@@ -122,7 +194,25 @@ export default function App() {
   };
   const handleRemove = (key) => setCart(cart.filter(i => i.key !== key));
 
+  const handleRepeatOrder = (repeatItems) => {
+    const newItems = repeatItems.map((ri, idx) => ({
+      key: 'repeat-' + Date.now() + '-' + idx,
+      productId: ri.productId,
+      name: ri.name,
+      qty: ri.qty,
+      unitPrice: ri.unitPrice,
+      total: ri.unitPrice * ri.qty,
+      hue: ri.hue,
+      modifiers: ri.modifiers || [],
+      note: ri.note || null,
+    }));
+    setCart([...cart, ...newItems]);
+    setScreen('cart');
+  };
+
   const handleOpenCart = () => {
+    const { isOpen } = isRestaurantOpen(PRIAMO);
+    if (!isOpen) return;
     if (!user.signedIn) {
       setAuthOpen(true);
       setScreen('cart');
@@ -133,6 +223,8 @@ export default function App() {
   };
 
   const handleProceedToCheckout = () => {
+    const { isOpen } = isRestaurantOpen(PRIAMO);
+    if (!isOpen) return;
     if (!isOnboardingComplete(user)) {
       setAuthOpen(true);
       return;
@@ -183,7 +275,11 @@ export default function App() {
 
   const handleLogout = () => {
     setUser({ signedIn: false, name: '', email: '', phone: '', addresses: [] });
-    setOrder({ method: 'delivery', addressId: null, phone: '', note: '' });
+    setOrder({ method: 'delivery', addressId: null, phone: '' });
+    setCart([]);
+    if (typeof window !== 'undefined') {
+      try { localStorage.removeItem('tindivo-cart'); } catch { /* ignore */ }
+    }
     setScreen('landing');
   };
 
@@ -248,7 +344,7 @@ export default function App() {
           <button
             onClick={() => {
               setUser({ signedIn: false, name: '', email: '', phone: '', addresses: [] });
-              setOrder({ method: 'delivery', addressId: null, phone: '', note: '' });
+              setOrder({ method: 'delivery', addressId: null, phone: '' });
               setAuthOpen(true);
             }}
             style={demoBtn}>
@@ -261,7 +357,6 @@ export default function App() {
                 method: 'delivery',
                 addressId: SEED_ADDRESSES[0].id,
                 phone: SIGNED_IN_USER.phone,
-                note: '',
               });
               setAuthOpen(false);
             }}
@@ -338,10 +433,11 @@ export default function App() {
               user={user}
               order={order}
               setOrder={setOrder}
-              onBack={() => setScreen('cart')}
+              frozen={checkoutFrozen}
+              onBack={() => { setCheckoutFrozen(false); setScreen('cart'); }}
               onAddAddress={() => beginAddAddress('checkout')}
               onEditAddress={(a) => beginEditAddress(a, 'checkout')}
-              onConfirm={(total) => { setConfirmedTotal(total); setScreen('payment'); }}
+              onConfirm={(total) => { setConfirmedTotal(total); setCheckoutFrozen(true); setScreen('payment'); }}
             />
           )}
 
@@ -353,7 +449,7 @@ export default function App() {
               onTimeout={() => setScreen('cancelled')}
               onPrepayUpload={() => setScreen('prepay')}
               onConfirm={(payment) => {
-                const newId = String(40000 + Math.floor(Math.random() * 9999));
+                const newId = 'TND-' + Date.now().toString().slice(-6);
                 setSubmittedOrder({
                   id: newId,
                   phone: order.phone,
@@ -374,7 +470,7 @@ export default function App() {
               onBack={() => setScreen('payment')}
               onTimeout={() => setScreen('cancelled')}
               onConfirm={(payment) => {
-                const newId = String(40000 + Math.floor(Math.random() * 9999));
+                const newId = 'TND-' + Date.now().toString().slice(-6);
                 setSubmittedOrder({
                   id: newId,
                   phone: order.phone,
@@ -421,6 +517,7 @@ export default function App() {
               onAddAddress={() => beginAddAddress('account')}
               onEditAddress={(a) => beginEditAddress(a, 'account')}
               onLogout={handleLogout}
+              onRepeatOrder={handleRepeatOrder}
             />
           )}
 

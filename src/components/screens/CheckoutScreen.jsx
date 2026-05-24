@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { Icon, ScreenHeader, Segmented } from '@/components/ui';
-import { PRIAMO } from '@/data';
+import { PRIAMO, SUPPORT_PHONE } from '@/data';
 
 // Checkout screen
-export function CheckoutScreen({ cart, user, order, setOrder, onBack, onConfirm, onAddAddress, onEditAddress }) {
+export function CheckoutScreen({ cart, user, order, setOrder, onBack, onConfirm, onAddAddress, onEditAddress, frozen = false }) {
   const subtotal = cart.reduce((s, i) => s + i.total, 0);
   const fee = order.method === 'delivery' ? PRIAMO.fee : 0;
   const total = subtotal + fee;
@@ -11,7 +11,8 @@ export function CheckoutScreen({ cart, user, order, setOrder, onBack, onConfirm,
   const validPhone = /^9\d{8}$/.test(order.phone.replace(/\s/g, ''));
   const selectedAddress = user.addresses.find(a => a.id === order.addressId);
   const needsAddress = order.method === 'delivery' && !selectedAddress;
-  const canContinue = !needsAddress && validPhone;
+  const addressRefTooShort = order.method === 'delivery' && selectedAddress && selectedAddress.reference.trim().length < 20;
+  const canContinue = !needsAddress && validPhone && !addressRefTooShort;
 
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -69,8 +70,9 @@ export function CheckoutScreen({ cart, user, order, setOrder, onBack, onConfirm,
                       key={a.id}
                       address={a}
                       compact
+                      frozen={frozen}
                       selected={order.addressId === a.id}
-                      onSelect={() => setOrder({ ...order, addressId: a.id })}
+                      onSelect={() => !frozen && setOrder({ ...order, addressId: a.id })}
                     />
                   ))}
                 </div>
@@ -129,20 +131,6 @@ export function CheckoutScreen({ cart, user, order, setOrder, onBack, onConfirm,
             </div>
           </div>
 
-          <div style={{ marginTop: 18 }}>
-            <label className="field-label">Nota adicional (opcional)</label>
-            <textarea
-              className="field"
-              placeholder="¿Alguna indicación adicional? Ej: sin lechuga en la hamburguesa, extra salsa en el pollo."
-              value={order.note || ''}
-              onChange={e => setOrder({ ...order, note: e.target.value })}
-              maxLength={200}
-            />
-            <div style={{ fontSize: 11, color: 'rgba(26,22,20,0.45)', marginTop: 4, textAlign: 'right' }}>
-              {(order.note || '').length}/200
-            </div>
-          </div>
-
           <div className="card" style={{ marginTop: 18, padding: '14px 16px' }}>
             <div className="eyebrow" style={{ marginBottom: 8 }}>Resumen</div>
             <Row label={`Productos (${cart.reduce((s,i)=>s+i.qty,0)})`} value={`S/ ${subtotal.toFixed(2)}`}/>
@@ -150,6 +138,16 @@ export function CheckoutScreen({ cart, user, order, setOrder, onBack, onConfirm,
             <div style={{ height: 1, background: 'rgba(26,22,20,0.08)', margin: '8px 0' }}/>
             <Row label="Total a pagar" value={`S/ ${total.toFixed(2)}`} big/>
           </div>
+
+          {/* Collapsible order summary */}
+          <OrderSummary
+            cart={cart}
+            subtotal={subtotal}
+            fee={fee}
+            total={total}
+            address={selectedAddress}
+            method={order.method}
+          />
         </div>
         <div style={{ height: 140 }}/>
       </div>
@@ -160,8 +158,8 @@ export function CheckoutScreen({ cart, user, order, setOrder, onBack, onConfirm,
           disabled={!canContinue}
           onClick={() => setShowConfirm(true)}>
           {canContinue
-            ? <>Revisar y pagar · S/ {total.toFixed(2)}</>
-            : (needsAddress ? 'Selecciona una dirección' : 'Ingresa un teléfono válido')}
+            ? <>Confirmar pedido · S/ {total.toFixed(2)}</>
+            : (needsAddress ? 'Selecciona una dirección' : addressRefTooShort ? 'La referencia es muy corta (mín. 20 caracteres)' : 'Ingresa un teléfono válido')}
         </button>
       </div>
       <div className="pad-home"/>
@@ -476,7 +474,9 @@ function DeliveryPaymentScreen({ total, order, onBack, onConfirm, onPrepayUpload
   const [method, setMethod] = useState('yape-receive');
   const [change, setChange] = useState('');
   const sel = PAYMENT_METHODS.find(m => m.id === method);
-  const validChange = method !== 'cash-receive' || change === '' || Number(change) >= total;
+  const changeAmount = Number(change) || 0;
+  const changeTooHigh = method === 'cash-receive' && change !== '' && changeAmount > total + 150;
+  const validChange = method !== 'cash-receive' || change === '' || (changeAmount >= total && !changeTooHigh);
 
   return (
     <div className="priamo-surface">
@@ -545,12 +545,17 @@ function DeliveryPaymentScreen({ total, order, onBack, onConfirm, onPrepayUpload
                       marginTop: 6, lineHeight: 1.4,
                     }}>
                       Así el motorizado lleva tu vuelto preparado.
-                      {change && Number(change) >= total && (
-                        <span style={{ color: '#1A8050', fontWeight: 600 }}>
-                          {' '}Vuelto: S/ {(Number(change) - total).toFixed(2)}.
+                      {change && changeTooHigh && (
+                        <span style={{ color: '#DC2626', fontWeight: 600 }}>
+                          {' '}El máximo de vuelto que podemos dar es S/ 150.
                         </span>
                       )}
-                      {change && Number(change) < total && (
+                      {change && !changeTooHigh && changeAmount >= total && change !== '' && (
+                        <span style={{ color: '#1A8050', fontWeight: 600 }}>
+                          {' '}Vuelto: S/ {(changeAmount - total).toFixed(2)}.
+                        </span>
+                      )}
+                      {change && changeAmount < total && change !== '' && (
                         <span style={{ color: '#DC2626', fontWeight: 600 }}>
                           {' '}Debe ser mayor a S/ {total.toFixed(2)}.
                         </span>
@@ -603,7 +608,7 @@ function DeliveryPaymentScreen({ total, order, onBack, onConfirm, onPrepayUpload
             ? (method === 'prepay-yape'
                 ? <>Continuar al pago · S/ {total.toFixed(2)}</>
                 : <>Enviar pedido · S/ {total.toFixed(2)}</>)
-            : 'Monto en efectivo insuficiente'}
+            : (changeTooHigh ? 'El máximo de vuelto es S/ 150' : 'Monto en efectivo insuficiente')}
         </button>
       </div>
       <div className="pad-home"/>
@@ -964,11 +969,10 @@ function PickupStep({ n, children }) {
 }
 
 export function SupportLink({ orderId }) {
-  const phone = '51987654321';
   const text = encodeURIComponent(
     `Hola Tindivo 👋, tengo un problema con mi pedido #TND-${orderId || '—'}. `
   );
-  const url = `https://wa.me/${phone}?text=${text}`;
+  const url = `https://wa.me/${SUPPORT_PHONE}?text=${text}`;
   return (
     <a
       href={url}
@@ -1447,8 +1451,9 @@ export function TrackingScreen({ order, total, cart, currentState, onSetState, o
   );
 }
 
-function AddressCard({ address: a, compact, selected, onSelect }) {
+function AddressCard({ address: a, compact, selected, onSelect, frozen = false }) {
   const labelIcon = a.label === 'Casa' ? '🏠' : a.label === 'Trabajo' ? '💼' : '📍';
+  const isLocked = frozen && selected;
   return (
     <div
       onClick={onSelect}
@@ -1459,6 +1464,7 @@ function AddressCard({ address: a, compact, selected, onSelect }) {
         display: 'flex', gap: 12, alignItems: 'flex-start',
         cursor: onSelect ? 'pointer' : 'default',
         transition: 'border-color 140ms ease',
+        opacity: frozen && !selected ? 0.5 : 1,
       }}>
       <div style={{
         width: 40, height: 40, borderRadius: 12,
@@ -1484,7 +1490,19 @@ function AddressCard({ address: a, compact, selected, onSelect }) {
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
         }}>{a.reference}</div>
       </div>
-      {selected && (
+      {isLocked && (
+        <div style={{
+          width: 22, height: 22, borderRadius: 999,
+          background: '#1A1614', color: '#fff', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
+            <rect x="1" y="5" width="8" height="7" rx="1.5" stroke="#fff" strokeWidth="1.5"/>
+            <path d="M3 5V3.5C3 2.12 4.12 1 5.5 1S8 2.12 8 3.5V5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </div>
+      )}
+      {selected && !isLocked && (
         <div style={{
           width: 22, height: 22, borderRadius: 999,
           background: '#F97316', color: '#fff', flexShrink: 0,
@@ -1508,6 +1526,67 @@ function Row({ label, value, big }) {
     }}>
       <span>{label}</span>
       <span>{value}</span>
+    </div>
+  );
+}
+
+function OrderSummary({ cart }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          width: '100%', background: '#fff',
+          borderRadius: 16, padding: '14px 16px',
+          border: '1px solid rgba(26,22,20,0.05)',
+          cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 10,
+            background: 'rgba(26,22,20,0.06)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2"/>
+              <path d="M8 12h8M8 8h8M8 16h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Detalle del pedido</div>
+            <div style={{ fontSize: 12, color: 'rgba(26,22,20,0.55)' }}>
+              {cart.length} {cart.length === 1 ? 'producto' : 'productos'}
+            </div>
+          </div>
+        </div>
+        <svg width="12" height="12" viewBox="0 0 12 12" style={{
+          transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+          transition: 'transform 200ms ease',
+        }}>
+          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          marginTop: 8, background: '#fff',
+          borderRadius: 16, padding: '14px 16px',
+          border: '1px solid rgba(26,22,20,0.05)',
+          animation: 'slideUp 180ms cubic-bezier(.22,1,.36,1)',
+        }}>
+          {cart.map(item => (
+            <div key={item.key} style={{
+              display: 'flex', justifyContent: 'space-between',
+              padding: '5px 0', fontSize: 13, color: 'rgba(26,22,20,0.8)',
+            }}>
+              <span>{item.qty}× {item.name}</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>S/ {item.total.toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

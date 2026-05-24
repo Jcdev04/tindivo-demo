@@ -1,14 +1,25 @@
 import { useState, useRef, Fragment } from 'react';
 import { Icon, ProductImage, ScreenHeader } from '@/components/ui';
-import { PRIAMO, MENU } from '@/data';
+import { PRIAMO, MENU, isRestaurantOpen } from '@/data';
 
 export function MenuScreen({ cart, onOpenProduct, onOpenCart, onBack, user, onOpenAccount }) {
   const [activeSection, setActiveSection] = useState(MENU[0].id);
+  const [closedToast, setClosedToast] = useState(false);
   const scrollRef = useRef(null);
   const sectionRefs = useRef({});
 
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   const cartTotal = cart.reduce((s, i) => s + i.total, 0);
+  const { isOpen, message: closedMsg } = isRestaurantOpen(PRIAMO);
+
+  const handleCartTap = () => {
+    if (!isOpen) {
+      setClosedToast(true);
+      setTimeout(() => setClosedToast(false), 4000);
+      return;
+    }
+    onOpenCart();
+  };
 
   const jumpTo = (sid) => {
     const el = sectionRefs.current[sid];
@@ -163,9 +174,22 @@ export function MenuScreen({ cart, onOpenProduct, onOpenCart, onBack, user, onOp
         </div>
       </div>
 
+      {closedToast && (
+        <div style={{
+          position: 'absolute', left: 16, right: 16, bottom: 100,
+          background: '#C2410C', color: '#fff', borderRadius: 14,
+          padding: '12px 16px', fontSize: 13, fontWeight: 500,
+          textAlign: 'center', zIndex: 40,
+          boxShadow: '0 8px 24px rgba(194,65,12,0.45)',
+          animation: 'slideUp 220ms cubic-bezier(.22,1,.36,1)',
+        }}>
+          {closedMsg}
+        </div>
+      )}
+
       {cartCount > 0 && (
         <button
-          onClick={onOpenCart}
+          onClick={handleCartTap}
           style={{
             position: 'absolute', left: 16, right: 16, bottom: 28,
             background: '#F97316', color: '#fff', border: 'none',
@@ -250,6 +274,17 @@ export function CartScreen({ cart, onBack, onUpdateQty, onRemove, onCheckout }) 
   const subtotal = cart.reduce((s, i) => s + i.total, 0);
   const fee = cart.length ? PRIAMO.fee : 0;
   const total = subtotal + fee;
+  const { isOpen, message: closedMsg } = isRestaurantOpen(PRIAMO);
+  const [showClosedBanner, setShowClosedBanner] = useState(false);
+
+  const handleCheckout = () => {
+    if (!isOpen) {
+      setShowClosedBanner(true);
+      setTimeout(() => setShowClosedBanner(false), 5000);
+      return;
+    }
+    onCheckout();
+  };
 
   return (
     <div className="priamo-surface">
@@ -295,9 +330,22 @@ export function CartScreen({ cart, onBack, onUpdateQty, onRemove, onCheckout }) 
         <div style={{ height: 140 }}/>
       </div>
 
+      {showClosedBanner && (
+        <div style={{
+          position: 'absolute', left: 16, right: 16, bottom: 100,
+          background: '#C2410C', color: '#fff', borderRadius: 14,
+          padding: '12px 16px', fontSize: 13, fontWeight: 500,
+          textAlign: 'center', zIndex: 50,
+          boxShadow: '0 8px 24px rgba(194,65,12,0.45)',
+          animation: 'slideUp 220ms cubic-bezier(.22,1,.36,1)',
+        }}>
+          {closedMsg}
+        </div>
+      )}
+
       {cart.length > 0 && (
         <div className="sticky-cta" style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
-          <button className="btn btn-primary btn-block" onClick={onCheckout}>
+          <button className="btn btn-primary btn-block" onClick={handleCheckout}>
             Continuar · S/ {total.toFixed(2)}
           </button>
         </div>

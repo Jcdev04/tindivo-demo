@@ -1,5 +1,5 @@
 import { Icon } from '@/components/ui';
-import { TINDIVO, RESTAURANTS } from '@/data';
+import { TINDIVO, RESTAURANTS, isRestaurantOpen } from '@/data';
 
 export default function LandingScreen({ user, onPickRestaurant, onOpenAuth, onOpenAccount }) {
   return (
@@ -46,19 +46,6 @@ export default function LandingScreen({ user, onPickRestaurant, onOpenAuth, onOp
             letterSpacing: '-0.03em',
           }}>
             {user.signedIn ? <>Buenas noches,<br/>{user.name.split(' ')[0]} 🍕</> : <>¿Qué pedimos<br/>hoy en la noche?</>}
-          </div>
-        </div>
-
-        <div style={{ padding: '0 16px 8px' }}>
-          <div style={{
-            background: '#fff', borderRadius: 16, padding: '14px 16px',
-            display: 'flex', alignItems: 'center', gap: 10,
-            border: '1px solid rgba(26,22,20,0.06)',
-          }}>
-            <Icon.Search style={{ color: 'rgba(26,22,20,0.4)' }}/>
-            <span style={{ color: 'rgba(26,22,20,0.5)', fontSize: 15 }}>
-              Buscar pizza, hamburguesa, bebida…
-            </span>
           </div>
         </div>
 
@@ -111,9 +98,19 @@ export default function LandingScreen({ user, onPickRestaurant, onOpenAuth, onOp
         </div>
 
         <div style={{ padding: '4px 16px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {RESTAURANTS.map(r => (
-            <RestaurantCard key={r.id} restaurant={r} onClick={() => r.status === 'open' && onPickRestaurant(r)}/>
-          ))}
+          {RESTAURANTS.map(r => {
+            const status = isRestaurantOpen(r);
+            const cardOpen = r.status === 'open' && status.isOpen;
+            return (
+              <RestaurantCard
+                key={r.id}
+                restaurant={r}
+                isOpen={cardOpen}
+                closedMessage={status.message}
+                onClick={() => cardOpen && onPickRestaurant(r)}
+              />
+            );
+          })}
         </div>
 
         <div style={{ padding: '24px 20px 40px', textAlign: 'center' }}>
@@ -131,8 +128,8 @@ export default function LandingScreen({ user, onPickRestaurant, onOpenAuth, onOp
   );
 }
 
-function RestaurantCard({ restaurant: r, onClick }) {
-  const isOpen = r.status === 'open';
+function RestaurantCard({ restaurant: r, onClick, isOpen, closedMessage }) {
+  const rOpen = r.status === 'open';
   return (
     <button
       onClick={onClick}
@@ -148,6 +145,15 @@ function RestaurantCard({ restaurant: r, onClick }) {
         transition: 'opacity 160ms ease',
         position: 'relative',
       }}>
+        {!isOpen && rOpen && closedMessage && (
+          <div style={{
+            position: 'absolute', top: 8, right: 8,
+            background: 'rgba(249,115,22,0.12)',
+            borderRadius: 8, padding: '4px 10px',
+            fontSize: 10, fontWeight: 600, color: '#C2410C',
+            zIndex: 2,
+          }}>{closedMessage}</div>
+        )}
       <div style={{
         width: 88, height: 88, borderRadius: 14,
         overflow: 'hidden', flexShrink: 0,
@@ -170,14 +176,16 @@ function RestaurantCard({ restaurant: r, onClick }) {
           <div className="priamo-display" style={{ fontSize: 18, marginBottom: 2 }}>{r.name}</div>
           <div style={{ fontSize: 12, color: 'rgba(26,22,20,0.55)' }}>{r.tagline}</div>
         </div>
-        {isOpen && (
+        {(isOpen || !rOpen) && (
           <div style={{ display: 'flex', gap: 10, fontSize: 12, color: 'rgba(26,22,20,0.7)', marginTop: 8 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Icon.Clock/> {r.eta}
+              <Icon.Clock/> {rOpen ? '6:00 PM – 10:45 PM' : 'Cerrado'}
             </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Icon.Truck/> S/{r.fee.toFixed(2)}
-            </span>
+            {rOpen && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Icon.Truck/> S/{r.fee.toFixed(2)}
+              </span>
+            )}
           </div>
         )}
       </div>

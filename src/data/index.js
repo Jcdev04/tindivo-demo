@@ -9,8 +9,59 @@ export const PRIAMO = {
   reviews: 312,
   eta: '25–35 min',
   fee: 2.0,
-  hours: '6:00 PM – 11:00 PM',
+  hours: '12:00 PM – 11:00 PM',
+  openTime: 12,
+  lastOrderTime: 22.75,
+  closeTime: 23,
 };
+
+export const SUPPORT_PHONE = '51999999999';
+
+// Haversine distance in km between two lat/lng points
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// San Jacinto center and coverage radius
+export const COVERAGE_CENTER = { lat: -9.1547, lng: -78.5042 };
+export const COVERAGE_RADIUS_KM = 3;
+
+// Convert pixel position (in MapView 400x220 space) to approximate lat/lng
+export function pixelToLatLng(pinPos) {
+  const { lat, lng } = COVERAGE_CENTER;
+  const pxPerDegree = 400 / 0.04;
+  const dLng = (pinPos.x - 200) / pxPerDegree;
+  const dLat = -(pinPos.y - 110) / pxPerDegree;
+  return { lat: lat + dLat, lng: lng + dLng };
+}
+
+// Check if a pin position is within coverage zone
+export function isWithinCoverage(pinPos) {
+  const point = pixelToLatLng(pinPos);
+  const dist = haversineKm(COVERAGE_CENTER.lat, COVERAGE_CENTER.lng, point.lat, point.lng);
+  return { within: dist <= COVERAGE_RADIUS_KM, distanceKm: dist };
+}
+
+export function isRestaurantOpen(restaurant) {
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  const currentTime = hours + minutes / 60;
+
+  if (currentTime < restaurant.openTime) {
+    return { isOpen: false, message: `${restaurant.name} abre hoy a las 12:00 PM` };
+  }
+  if (currentTime >= restaurant.lastOrderTime) {
+    return { isOpen: false, message: `Ya no aceptamos pedidos por hoy. Volvemos mañana a las 12:00 PM` };
+  }
+  return { isOpen: true, message: '' };
+}
 
 export const TINDIVO = {
   city: 'San Jacinto, Áncash',
@@ -88,9 +139,24 @@ export const SEED_USER = {
 };
 
 export const PAST_ORDERS = [
-  { id: 'TND-48201', date: 'Hace 3 días', items: 'Pizza Margarita + Inca Kola', total: 46, status: 'Entregado' },
-  { id: 'TND-47102', date: 'La semana pasada', items: 'BBQ Bacon + Papas', total: 33, status: 'Entregado' },
-  { id: 'TND-45990', date: 'Hace 2 semanas', items: 'Priamo Especial Familiar', total: 49, status: 'Entregado' },
+  { id: 'TND-48201', date: 'Hace 3 días', items: 'Pizza Margarita + Inca Kola', total: 46, status: 'Entregado',
+    repeatItems: [
+      { productId: 'pz-margarita', name: 'Margarita', qty: 1, unitPrice: 36, hue: 8, modifiers: [{ group: 'Tamaño', name: 'Familiar', price: 8 }, { group: 'Tipo de masa', name: 'Tradicional', price: 0 }], note: null },
+      { productId: 'dr-inca', name: 'Inca Kola 500ml', qty: 2, unitPrice: 5, hue: 55, modifiers: [], note: null },
+    ],
+  },
+  { id: 'TND-47102', date: 'La semana pasada', items: 'BBQ Bacon + Papas', total: 33, status: 'Entregado',
+    repeatItems: [
+      { productId: 'bg-bbq', name: 'BBQ Bacon', qty: 1, unitPrice: 29, hue: 18, modifiers: [{ group: 'Acompañamiento', name: 'Papas rústicas', price: 0 }], note: null },
+      { productId: 'dr-coca', name: 'Coca-Cola 500ml', qty: 1, unitPrice: 5, hue: 12, modifiers: [], note: null },
+    ],
+  },
+  { id: 'TND-45990', date: 'Hace 2 semanas', items: 'Priamo Especial Familiar', total: 49, status: 'Entregado',
+    repeatItems: [
+      { productId: 'pz-priamo', name: 'Priamo Especial', qty: 1, unitPrice: 39, hue: 32, modifiers: [{ group: 'Tamaño', name: 'Familiar', price: 8 }], note: null },
+      { productId: 'dr-chicha', name: 'Chicha Morada 1L', qty: 1, unitPrice: 9, hue: 290, modifiers: [], note: null },
+    ],
+  },
 ];
 
 export const MENU = [

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Icon, ScreenHeader } from '@/components/ui';
-import { PAST_ORDERS } from '@/data';
+import { PAST_ORDERS, isWithinCoverage, COVERAGE_RADIUS_KM } from '@/data';
 import { MapView } from './CheckoutScreen';
 
-export function AccountScreen({ user, setUser, onBack, onEditAddress, onAddAddress, onLogout }) {
+export function AccountScreen({ user, setUser, onBack, onEditAddress, onAddAddress, onLogout, onRepeatOrder }) {
   return (
     <div className="priamo-surface">
       <div className="pad-status"/>
@@ -80,35 +80,68 @@ export function AccountScreen({ user, setUser, onBack, onEditAddress, onAddAddre
 
           {/* History */}
           <div style={{ marginTop: 22, marginBottom: 8 }}>
-            <div className="priamo-display" style={{ fontSize: 19 }}>Pedidos anteriores</div>
+            <div className="priamo-display" style={{ fontSize: 19 }}>Mis pedidos anteriores</div>
           </div>
+          {PAST_ORDERS.length === 0 ? (
+            <div style={{
+              background: '#fff', borderRadius: 18, padding: '32px 20px',
+              border: '1px solid rgba(26,22,20,0.05)',
+              textAlign: 'center', color: 'rgba(26,22,20,0.55)',
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: '#1A1614', marginBottom: 4 }}>
+                Aún no tienes pedidos
+              </div>
+              <div style={{ fontSize: 12 }}>¡Haz tu primer pedido!</div>
+            </div>
+          ) : (
           <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(26,22,20,0.05)' }}>
             {PAST_ORDERS.map((o, i) => (
               <div key={o.id} style={{
                 padding: '14px 16px',
                 borderBottom: i < PAST_ORDERS.length - 1 ? '1px solid rgba(26,22,20,0.06)' : 'none',
-                display: 'flex', alignItems: 'center', gap: 12,
               }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: 10,
-                  background: 'rgba(26,150,80,0.1)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#1A8050', flexShrink: 0,
-                }}>
-                  <Icon.Check/>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{o.items}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(26,22,20,0.55)', marginTop: 2 }}>
-                    {o.id} · {o.date}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    background: o.status === 'Entregado' ? 'rgba(26,150,80,0.1)' : 'rgba(220,38,38,0.08)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: o.status === 'Entregado' ? '#1A8050' : '#DC2626', flexShrink: 0,
+                  }}>
+                    <Icon.Check/>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{o.items}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(26,22,20,0.55)', marginTop: 2 }}>
+                      {o.id} · {o.date}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                    S/ {o.total.toFixed(2)}
                   </div>
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                  S/ {o.total.toFixed(2)}
-                </div>
+                {o.repeatItems && onRepeatOrder && (
+                  <button
+                    onClick={() => onRepeatOrder(o.repeatItems)}
+                    style={{
+                      marginTop: 10, width: '100%',
+                      padding: '10px 14px', borderRadius: 12,
+                      background: 'rgba(249,115,22,0.08)',
+                      border: '1px solid rgba(249,115,22,0.18)',
+                      color: '#F97316', fontFamily: 'inherit',
+                      fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <path d="M4 4v5h5M20 20v-5h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      <path d="M6.5 9.5l3.5-3.5 3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                    Repetir pedido
+                  </button>
+                )}
               </div>
             ))}
           </div>
+          )}
 
           {/* Settings */}
           <div style={{ marginTop: 22, marginBottom: 8 }}>
@@ -233,9 +266,11 @@ function SettingRow({ icon, label, onClick, danger, isLast }) {
 
 export function AddressEditScreen({ address, isNew, onBack, onSave, onDelete }) {
   const [a, setA] = useState(address);
-  const validRef = a.reference.trim().length >= 6;
+  const validRef = a.reference.trim().length >= 20;
   const validLine = a.line.trim().length >= 3;
-  const canSave = validRef && validLine;
+  const coverage = isWithinCoverage(a.pinPos);
+  const outOfZone = !coverage.within;
+  const canSave = validRef && validLine && !outOfZone;
 
   return (
     <div className="priamo-surface">
@@ -262,6 +297,17 @@ export function AddressEditScreen({ address, isNew, onBack, onSave, onDelete }) 
           <div style={{ marginBottom: 14 }}>
             <label className="field-label">Ubicación en el mapa</label>
             <MapView pinPos={a.pinPos} onMove={(p) => setA({ ...a, pinPos: p })}/>
+            {outOfZone && (
+              <div style={{
+                marginTop: 8, padding: '10px 12px',
+                background: 'rgba(220,38,38,0.06)',
+                border: '1px solid rgba(220,38,38,0.22)',
+                borderRadius: 10, fontSize: 12, color: '#DC2626',
+                fontWeight: 500, lineHeight: 1.45,
+              }}>
+                Esta dirección está fuera de nuestra zona de cobertura en San Jacinto (radio {COVERAGE_RADIUS_KM}km).
+              </div>
+            )}
           </div>
 
           <div style={{ marginBottom: 14 }}>
@@ -280,13 +326,13 @@ export function AddressEditScreen({ address, isNew, onBack, onSave, onDelete }) 
             </label>
             <textarea
               className="field"
-              placeholder="Frente a la bodega, casa de reja negra…"
+              placeholder="Ej: Frente a la bodega de don Carlos, puerta azul"
               value={a.reference}
               onChange={e => setA({ ...a, reference: e.target.value })}
               maxLength={140}
             />
             <div style={{ fontSize: 11, color: 'rgba(26,22,20,0.5)', marginTop: 4, lineHeight: 1.4 }}>
-              {a.reference.length}/140 caracteres
+              {a.reference.length}/140 caracteres {a.reference.length < 20 && a.reference.length > 0 && <span style={{ color: '#DC2626' }}>(mín. 20)</span>}
             </div>
           </div>
 
@@ -337,7 +383,7 @@ export function AddressEditScreen({ address, isNew, onBack, onSave, onDelete }) 
 
       <div className="sticky-cta" style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
         <button className="btn btn-primary btn-block" disabled={!canSave} onClick={() => onSave(a)}>
-          {isNew ? 'Guardar dirección' : 'Guardar cambios'}
+          {outOfZone ? 'Fuera de zona de cobertura' : (isNew ? 'Guardar dirección' : 'Guardar cambios')}
         </button>
       </div>
       <div className="pad-home"/>
